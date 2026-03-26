@@ -1,9 +1,12 @@
+# app.py
+
 import os
 import threading
 import time
 import json
 import schedule
 import traceback
+import argparse
 
 from datetime import datetime
 from collections import OrderedDict
@@ -13,6 +16,7 @@ from src.status import bot_status
 from src.database import DatabaseManager
 from src.services import BotWorker, WebsiteManager
 from src.logger import logger
+from src.settings import Settings
 
 app = Flask(__name__)
 
@@ -165,13 +169,21 @@ def run_scheduler():
         time.sleep(1)
 
 
-if __name__ == '__main__':
-    # Ensure output directory exists
+def main():
     os.makedirs("output", exist_ok=True)
-    
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', type=int, default=None)
+    args = parser.parse_args()
+
+    port = args.port if args.port else Settings.PORT
+
     scheduler_thread = threading.Thread(target=run_scheduler)
     scheduler_thread.daemon = True
     scheduler_thread.start()
-    
-    # Run Flask app
-    app.run(debug=True, port=5001, use_reloader=False)
+
+    app.run(debug=True, port=port, use_reloader=False)
+
+
+if __name__ == '__main__':
+    main()
