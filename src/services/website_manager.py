@@ -68,7 +68,7 @@ class WebsiteManager:
                             target_index = website.link_location - 1
                             if (len(row) > target_index and
                                 str(row[target_index]).strip() and
-                                    self.is_valid_url(row[target_index])):
+                                    is_valid_url(row[target_index])):
                                 website.articles.append(Article(link=row[target_index]))
                                 logger.info(f"Valid URL: {row[target_index]}")
                             elif len(row) > target_index:

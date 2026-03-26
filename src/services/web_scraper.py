@@ -2,12 +2,16 @@ import gzip
 import time
 import traceback
 import requests as requests_normal
-import undetected_chromedriver as uc
+import asyncio
 
 from datetime import datetime
 from bs4 import BeautifulSoup
 from fake_useragent import UserAgent
 from io import BytesIO
+
+from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
+
 
 from ..database import DatabaseManager
 from ..models import Website, Article
@@ -83,53 +87,39 @@ class WebScraper:
 
         return None, 0, NetworkAccessMethod.PROXY
 
-    def get_page_with_chromedriver(self, url, driver: uc.Chrome):
-        """Get a page using undetected chromedriver"""
+    
+    async def get_page_with_playwright(self, url):
         try:
-            retries = 3
-            while retries != 0:
-                retries -= 1
-                logger.info(f"Navigating to {url} with undetected ChromeDriver. attempt number: {retries + 1}")
+            async with Stealth().use_async(async_playwright()) as p:
+                browser = await p.chromium.launch(headless=True)
 
-                driver.get(url)
-                time.sleep(3)
+                context = await browser.new_context()
+                page = await context.new_page()
 
-                html_content = driver.page_source
+                logger.info(f"Navigating to {url} with Playwright")
+
+                await page.goto(url, wait_until="domcontentloaded")
+                await asyncio.sleep(3)
+
+                html_content = await page.content()
                 soup = self.try_parse_html(html_content)
 
                 if "Access denied" in html_content:
                     logger.info("Access Denied")
                     return None, "Access Denied"
-                elif "Just a moment..." in html_content:
+
+                if "Just a moment..." in html_content:
                     logger.info("Cloudflare detected, waiting...")
-                    time.sleep(20)
-                    html_content = driver.page_source
+                    await asyncio.sleep(15)
+                    html_content = await page.content()
                     soup = self.try_parse_html(html_content)
 
-                    if "Just a moment..." in html_content:
-                        if retries == 0:
-                            logger.error("Failed to bypass Cloudflare protection after retries")
-                            return None, "Cloudflare Protection Failed"
-                        else:
-                            continue
-                else:
-                    return soup, None
-
-            return None, "Max retries reached"
+                await browser.close()
+                return soup, None
 
         except Exception as e:
-            err_msg = str(e)
-            default_error_msg = "Failed to retrieve the page"
-            known_errors = [
-                "ERR_NAME_NOT_RESOLVED", "ERR_CONNECTION_REFUSED",
-                "ERR_CONNECTION_TIMED_OUT", "ERR_SSL_PROTOCOL_ERROR",
-                "ERR_CONNECTION_CLOSED", "ERR_SSL_UNRECOGNIZED_NAME_ALERT"
-            ]
-            if any(err in err_msg for err in known_errors):
-                return None, default_error_msg
-            else:
-                logger.critical(f"Error in get_page_with_chromedriver: {err_msg}")
-                return None, f"WebDriver Error: {err_msg}"
+            logger.critical(f"Playwright error: {str(e)}")
+            return None, str(e)
 
     def check_for_hyperlinks(self, soup: BeautifulSoup, website: Website, article_link, scrape_method: ScrapeMethod, network_access_method: NetworkAccessMethod):
         """Check for hyperlinks in the soup and store in database"""

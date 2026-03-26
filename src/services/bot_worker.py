@@ -1,4 +1,4 @@
-import undetected_chromedriver as uc
+import asyncio
 
 from datetime import datetime
 
@@ -56,16 +56,26 @@ class BotWorker:
 
                     if soup:
                         logger.info("Request successful")
-                        has_hyperlinks = self.scraper.check_for_hyperlinks(soup, website, article.link, ScrapeMethod.REQUESTS, network_access_method)
+                        has_hyperlinks = self.scraper.check_for_hyperlinks(
+                            soup,
+                            website,
+                            article.link,
+                            ScrapeMethod.REQUESTS,
+                            network_access_method
+                        )
                         if not has_hyperlinks:
-                            self.website_manager.no_href_articles.append(NoHrefArticle(link=article.link, website=website))
+                            self.website_manager.no_href_articles.append(
+                                NoHrefArticle(link=article.link, website=website)
+                            )
                     else:
                         logger.info(f"Request failed with code: {response_code}")
-                        self.website_manager.failed_to_retrieve_articles.append(FailedToRetrieveArticle(link=article.link, website=website))
+                        self.website_manager.failed_to_retrieve_articles.append(
+                            FailedToRetrieveArticle(link=article.link, website=website)
+                        )
 
-                # Phase 2: ChromeDriver fallback
+                # Phase 2: Playwright fallback
                 if self.website_manager.no_href_articles or self.website_manager.failed_to_retrieve_articles:
-                    self._process_with_chrome(website)
+                    self._process_with_playwright(website)
 
                 logger.info(f"Exporting data for {website.name}")
                 self.db_manager.export_to_excel(website.table)
@@ -77,41 +87,57 @@ class BotWorker:
         finally:
             bot_status.is_running = False
 
-    def _process_with_chrome(self, website):
-        """Process failed/no-href articles using ChromeDriver"""
-        options = uc.ChromeOptions()
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        driver = uc.Chrome(options=options)
+    def _process_with_playwright(self, website):
+        """Process failed/no-href articles using Playwright"""
 
         all_pending = self.website_manager.no_href_articles + self.website_manager.failed_to_retrieve_articles
-        bot_status.current_website_name = f"{website.name} (Chrome)"
+        bot_status.current_website_name = f"{website.name} (Playwright)"
         bot_status.total_articles_in_website = len(all_pending)
 
-        logger.info(f"Processing {len(all_pending)} articles with Chrome")
+        logger.info(f"Processing {len(all_pending)} articles with Playwright")
 
-        try:
-            for j, pending_article in enumerate(all_pending):
-                if not bot_status.is_running:
-                    break
+        for j, pending_article in enumerate(all_pending):
+            if not bot_status.is_running:
+                break
 
-                bot_status.current_link_number = j + 1
-                logger.info(f"Chrome processing {bot_status.current_link_number}/{bot_status.total_articles_in_website}: {pending_article.link}")
+            bot_status.current_link_number = j + 1
+            logger.info(
+                f"Playwright processing {bot_status.current_link_number}/{bot_status.total_articles_in_website}: {pending_article.link}"
+            )
 
-                soup, error = self.scraper.get_page_with_chromedriver(pending_article.link, driver)
-                now = datetime.now().strftime("| %Y-%m-%d | %I:%M:%S %p |")
+            soup, error = asyncio.run(
+                self.scraper.get_page_with_playwright(pending_article.link)
+            )
 
-                if soup and not error:
-                    if not self.scraper.check_for_hyperlinks(soup, website, pending_article.link, ScrapeMethod.UNDETECTED_CHROMEDRIVER, NetworkAccessMethod.DIRECT):
-                        self.db_manager.insert_hyperlink_data(
-                            website.table, pending_article.link, "No links found", "No links found", "No links found",
-                            now, ScrapeMethod.UNDETECTED_CHROMEDRIVER, NetworkAccessMethod.DIRECT
-                        )
-                else:
-                    error_msg = error or "Failed with Chrome"
+            now = datetime.now().strftime("| %Y-%m-%d | %I:%M:%S %p |")
+
+            if soup and not error:
+                if not self.scraper.check_for_hyperlinks(
+                    soup,
+                    website,
+                    pending_article.link,
+                    ScrapeMethod.CHROME,
+                    NetworkAccessMethod.DIRECT
+                ):
                     self.db_manager.insert_hyperlink_data(
-                        website.table, pending_article.link, error_msg, error_msg, error_msg,
-                        now, ScrapeMethod.UNDETECTED_CHROMEDRIVER, NetworkAccessMethod.DIRECT
+                        website.table,
+                        pending_article.link,
+                        "No links found",
+                        "No links found",
+                        "No links found",
+                        now,
+                        ScrapeMethod.CHROME,
+                        NetworkAccessMethod.DIRECT
                     )
-        finally:
-            driver.quit()
+            else:
+                error_msg = error or "Failed with Playwright"
+                self.db_manager.insert_hyperlink_data(
+                    website.table,
+                    pending_article.link,
+                    error_msg,
+                    error_msg,
+                    error_msg,
+                    now,
+                    ScrapeMethod.CHROME,
+                    NetworkAccessMethod.DIRECT
+                )
