@@ -61,7 +61,7 @@ poetry install
 
 **3. Install Playwright browsers**
 ```bash
-poetry run playwright install chromium
+playwright install
 ```
 
 **4. Configure environment variables**
