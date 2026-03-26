@@ -9,7 +9,7 @@ A scheduled web scraping bot that automatically checks guest post articles for h
 - Reads article URLs from **Google Sheets**
 - Scrapes each article looking for hyperlinks to target domains
 - Falls back to **ScrapeOps proxy** if direct request fails
-- Falls back to **undetected ChromeDriver** to bypass Cloudflare protection
+- Falls back to **Playwright** (with stealth mode) to bypass Cloudflare protection
 - Saves results to **SQLite** and exports to **Excel**
 - Runs automatically every day at 8:00 PM via a built-in scheduler
 - Exposes a **REST API** to start/stop the bot and manage websites
@@ -23,7 +23,7 @@ A scheduled web scraping bot that automatically checks guest post articles for h
 ├── src/
 │   ├── services/
 │   │   ├── bot_worker.py       # Main bot orchestration
-│   │   ├── web_scraper.py      # Scraping logic (requests → proxy → Chrome)
+│   │   ├── web_scraper.py      # Scraping logic (requests → proxy → Playwright)
 │   │   └── website_manager.py  # Google Sheets loader
 │   ├── database.py         # SQLite operations & Excel export
 │   ├── models.py           # Data models
@@ -31,7 +31,7 @@ A scheduled web scraping bot that automatically checks guest post articles for h
 │   ├── constants.py        # Enums (ScrapeMethod, NetworkAccessMethod)
 │   ├── status.py           # Bot runtime status
 │   ├── utils.py            # URL validation helpers
-│   └── logger.py           # Logging setup
+│   └── logger.py           # Logging setup (UTF-8 safe)
 └── output/                 # Generated Excel files
 ```
 
@@ -40,7 +40,6 @@ A scheduled web scraping bot that automatically checks guest post articles for h
 ## Requirements
 
 - Python 3.12+
-- Google Chrome installed
 - [Poetry](https://python-poetry.org/)
 - A [ScrapeOps](https://scrapeops.io/) API key
 - A Google Cloud service account with Sheets API access
@@ -60,15 +59,21 @@ cd guest-post-link-checker
 poetry install
 ```
 
-**3. Configure environment variables**
+**3. Install Playwright browsers**
+```bash
+poetry run playwright install chromium
+```
+
+**4. Configure environment variables**
 
 Create a `.env` file in the root:
 ```env
 PROXY_API_KEY=your_scrapeops_api_key
+PROXY_URL=https://proxy.scrapeops.io/v1/
 PORT=5001
 ```
 
-**4. Add Google Sheets credentials**
+**5. Add Google Sheets credentials**
 
 Place your Google service account JSON file as `keys.json` in the root directory.
 
